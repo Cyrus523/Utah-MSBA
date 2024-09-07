@@ -460,7 +460,7 @@ C5imp(tree05)
 #Answer: The answer to this will be more similar to the answer to Q5 than Q6. Since the higher income individual will most likely be able to pay off the loan if they do accept, then there is less reputational risk. Still though, trust from the customer in the marketer will be reduced since tone-deaf products are still being offered.
 
 #Q7: Was the model better at predicting those with low income or high income?
-mmetric(testSet$y, testPredictions05, metrics)
+# mmetric(testSet$y, testPredictions05, metrics)
 #Answer: TPR1(low income): 93.51% and TPR2(high income): 66.15%. Clearly the model was better at predicting lower income customers than higher income. I would take a guess that this is because there were more low income entries in the dataset to train the model on. 
 
 ```
