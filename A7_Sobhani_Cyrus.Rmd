@@ -1,0 +1,466 @@
+---
+title: "A7_Sobhani_Cyrus"
+author: "Cyrus Sobhani"
+date: "July 24, 2024"
+output: 
+  html_document: 
+    number_sections: true
+    toc: true
+    theme: united
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Import libraries
+
+```{r}
+library(C50)
+library(psych)
+library(RWeka)
+library(caret)
+library(rminer)
+library(matrixStats)
+library(knitr)
+library(tidyverse)
+library(e1071)
+```
+
+# Task I - EDA: Import the dataset and factorize variables
+```{r}
+
+# import data and view
+CensusData <- read.csv(file = "/Users/cyrussobhani/Documents/IS6482/Week 10 Files/census.csv", stringsAsFactors = FALSE)
+str(CensusData)
+summary(CensusData)
+head(CensusData)
+#After reviewing the dataset it is clear that there are a number of chr variables that need to be transformed into factor variables. Including the target variable 'y'
+
+#Transform chr variables to factor variables
+CensusData$workclass <- factor(CensusData$workclass)
+CensusData$education <- factor(CensusData$education)
+CensusData$marital.status <- factor(CensusData$marital.status)
+CensusData$occupation <- factor(CensusData$occupation)
+CensusData$relationship <- factor(CensusData$relationship)
+CensusData$race <- factor(CensusData$race)
+CensusData$sex <- factor(CensusData$sex)
+CensusData$native.country <- factor(CensusData$native.country)
+CensusData$y <- factor(CensusData$y)
+
+str(CensusData)
+summary(CensusData)
+head(CensusData)
+
+
+#After reviewing the dataset post-factorization it confirms that the target variable is categorical (2 options: >50k or <=50k) and NOT numeric.
+
+```
+
+# Task I - EDA: Conducting Further EDA
+```{r}
+
+#inspect the integer variables to see if they are actually categorical. We will count the number of unique entries.
+#age
+UniqueAge <- unique(CensusData$age)
+CountUniqueAge <- length(UniqueAge)
+CountUniqueAge
+#fnlwgt
+UniqueFn <- unique(CensusData$fnlwgt)
+CountUniqueFn <- length(UniqueFn)
+CountUniqueFn
+#Education.num
+UniqueEduNum <- unique(CensusData$education.num)
+CountUniqueEduNum <- length(UniqueEduNum)
+CountUniqueEduNum
+#Capital.gain
+UniqueCapGain <- unique(CensusData$capital.gain)
+CountUniqueCapGain <- length(UniqueCapGain)
+CountUniqueCapGain
+#Capital.loss
+UniqueCapLoss <- unique(CensusData$capital.loss)
+CountUniqueCapLoss <- length(UniqueCapLoss)
+CountUniqueCapLoss
+#Hours
+UniqueHours <- unique(CensusData$hours.per.week)
+CountUniqueHours <- length(UniqueHours)
+CountUniqueHours
+
+#After inspecting the numerical data it appeared that the "education.num" variable was more categorical than continuous. It had only 16 unique entries as opposed to the rest of the variables that had anywhere from dozens to thousands. This is the only integer variable variable we are converting to a factor variable.
+CensusData$education.num <- factor(CensusData$education.num)
+
+#Now that we have our truly numerical variables identified. We can use the pairs.panel() function to show the distributions and correlations of all the numeric variables with the target variable.
+CensusData %>% select(age,fnlwgt,capital.gain,capital.loss,hours.per.week,y) %>% pairs.panels()
+
+#While none of the correlation coefficients seem particularly high in relation to the target variable, it looks like age and hours.per.week have the highest correlation coefficients at 0.23. 
+#Also, I can get a decent idea of the distributions of age(right-skew), fnlwgt(right-skew), and hours.per.week (close to a zero-skew) with the histograms from the pairs.panel() function, but capital loss and capital gain seem to look a bit odd. I am going to explore those a little more to understand those variables a little better.
+
+hist(CensusData$capital.gain)
+hist(CensusData$capital.loss)
+#After blowing up the histograms for capital.gain and capital.loss, it appears that most entries in the dataset have 0 capital gains or lossses. Let's confirm.
+sum(CensusData$capital.gain == 0)
+(sum(CensusData$capital.gain == 0)/length(CensusData$capital.gain))*100
+capGainCompare <- CensusData[,c(11,15)]
+capGainCompare %>% table() %>% prop.table(1)
+#It looks like 91.67% of entries in the dataset have 0 for capital gain. When correlating with the target variable the results of the pairs panel show true. Scrolling through the prop table does not provide a clear indication that having a capital gain greater than 0 will guarantee a result. We will pay attention to this when training the models. Let's see if Capital loss has the same issue.
+sum(CensusData$capital.loss == 0)
+(sum(CensusData$capital.loss == 0)/length(CensusData$capital.loss))*100
+capLossCompare <- CensusData[,c(12,15)]
+capLossCompare %>% table() %>% prop.table(1)
+#It looks like an even higher 95.33% of the entries in the dataset have 0 for capital loss. Again, we will treat this the same as capital gain.
+
+#Here we use prop tables to identify any variables that have 100% correlation with the target variable. 
+workClassCompare <- CensusData[,c(2,15)]
+workClassCompare %>% table() %>% prop.table(1)
+#Never-worked: <=50K
+#Without-pay: <=50K
+
+educationCompare <- CensusData[,c(4,15)]
+educationCompare %>% table() %>% prop.table(1)
+#Preschool: <=50K
+
+education.numCompare <- CensusData[,c(5,15)]
+education.numCompare %>% table() %>% prop.table(1)
+#1: <=50K
+
+marital.statusCompare <- CensusData[,c(6,15)]
+marital.statusCompare %>% table() %>% prop.table(1)
+#None
+
+occupationCompare <- CensusData[,c(7,15)]
+occupationCompare %>% table() %>% prop.table(1)
+#None
+
+relationshipCompare <- CensusData[,c(8,15)]
+relationshipCompare %>% table() %>% prop.table(1)
+#None
+
+raceCompare <- CensusData[,c(9,15)]
+raceCompare %>% table() %>% prop.table(1)
+#None
+
+sexCompare <- CensusData[,c(10,15)]
+sexCompare %>% table() %>% prop.table(1)
+#None
+
+native.countryCompare <- CensusData[,c(14,15)]
+native.countryCompare %>% table() %>% prop.table(1)
+#Holand-Netherlands: <=50K
+#Outlying-US(Guam-USVI-etc)
+
+#What is the distribution of the target variable?
+summary(CensusData$y)
+CensusData %>% pull(y) %>% table() %>% prop.table() %>% round(4)
+#Here we can see that 75.92% of the target variable is <=50K and 24.08% is >50K. We will need to keep this in mind when we start splitting the data into training and testing groups. 
+
+```
+
+# Task I - EDA: List and Evaluate Prospective Supervised Models
+```{r}
+
+#List of Supervised learning models fit for this task: These models can be used for this dataset because they can solve for binary classification target variables (in this case, y = either <=50K or >50K) and because they can ingest both categorical and continuous datatypes. This allows us to predict for the correct target variable and use all of the data in the dataset.
+
+#1. Classification Decision Tree (C50)
+
+#2. Classification Naive Bayes (naiveBayes)
+
+#4. Black Box Model (MLP)
+
+#3. K-nearest Neighbor (IBK)
+
+#List of Supervised Learning models not fit for this task: These models are not fit for this task because they are either developed for numerical prediction (regression) or can only use numerical predictors, which would limit how much of the dataset we could use for training/testing. 
+
+#1. Recursive Partitioning and Regression Tree (rpart)
+
+#2. Linear Regression (lm)
+
+#3. Model Tree (M5P)
+
+#4.Support Vector Machines (SVM)
+
+```
+
+# Task II Data Preparation
+```{r}
+
+#Prepare your data for modeling. What tasks should be performed to ensure your model metrics can be used to identify over/underfitting?
+
+#We need to ensure that the split produces a proportion of training and testing data that is aligned with the overall dataset (75.92% for <=50K and 24.08% for >50K). We also need to make sure that there is sufficient training and testing data. if you use too much of the original dataset to train, it will be overfit and the testing data won't provide much insight. If you use too little, the opposite will happen and the model will be underfit. 
+
+#Set seed to ensure reproducibility
+set.seed(500) 
+
+#Here we proportion the dataset out with a 70/30 split. 
+index_numbers_split <- createDataPartition(CensusData$y,p=0.7, list = FALSE)
+
+#70% goes to the training data
+trainSet <- CensusData[index_numbers_split,]
+#30% goes to the testing data
+testSet <- CensusData[-index_numbers_split,]
+
+#test we proportioned the train set properly
+table(trainSet$y)
+prop.table(table(trainSet$y))
+#after checking the results o the training set we can see the proportion of the target variables aligns with the overall dataset.
+
+#test we proportioned the test set properly
+table(testSet$y)
+prop.table(table(testSet$y))
+#after checking the results o the training set we can see the proportion of the target variables aligns with the overall dataset.
+
+#set the metrics list.
+metrics <- c("CONF","ACC","F1","PRECISION","TPR")
+
+```
+# Task III - Model Building
+```{r}
+
+#Since we need to evaluate 4 separate model types, I will build 3 variants of each model. We will evaluate all 12 models at the end to determine which should be recommended, and for what reasons. 
+
+#3 variants for each model should be sufficient to show that overfitting or any other issues with the models can be fixed with parameter optemization.
+
+
+#Your stakeholders prefer interpretability over performance. Consider this as you choose your models.
+  #This will limit the usage of a blackbox model, but we will still apply it.
+
+#How many models are sufficient? Enough to show that you found underfitting, overfitting and a good balance between the two. Your stakeholders still want a good model however.
+  #a model that has the best overall training metrics
+
+#Which metrics are appropriate for the prediction task?
+
+```
+
+# Task III - Model Building: Classification Tree
+```{r}
+
+#Train the default tree model. Default CF is set to 0.25
+treeDefault <- C5.0(y~.,trainSet)
+#treeDefault
+#Set predictions
+trainPredictionsDef <- predict(treeDefault,trainSet)
+testPredictionsDef <- predict(treeDefault,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, trainPredictionsDef, metrics)
+mmetric(testSet$y, testPredictionsDef, metrics)
+
+#Train the tree model with a CF reduced from default by 0.2 to 0.05
+tree05 <- C5.0(y~.,trainSet,control = C5.0Control(CF=0.05,earlyStopping = FALSE,noGlobalPruning = FALSE))
+#tree25
+#Set predictions
+trainPredictions05 <- predict(tree05,trainSet)
+testPredictions05 <- predict(tree05,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, trainPredictions05, metrics)
+mmetric(testSet$y, testPredictions05, metrics)
+
+#Train a tree model with a CF increased by 0.4 from default to 0.65
+tree65 <- C5.0(y~.,trainSet,control = C5.0Control(CF=0.65,earlyStopping = FALSE,noGlobalPruning = FALSE))
+#tree65
+#Set predictions
+trainPredictions65 <- predict(tree65,trainSet)
+testPredictions65 <- predict(tree65,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, trainPredictions65, metrics)
+mmetric(testSet$y, testPredictions65, metrics)
+
+```
+
+# Task III - Model Building: Naive Bayes
+```{r}
+
+#Train the default NaiveBayes model
+naiveBDef <- naiveBayes(y~.,data=trainSet)
+#Show information about the model
+#naiveBDef
+#Set predictions
+naiveBDefTrainPredictions <- predict(naiveBDef,trainSet)
+naiveBDefTestPredictions <- predict(naiveBDef,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, naiveBDefTrainPredictions, metrics)
+mmetric(testSet$y, naiveBDefTestPredictions, metrics)
+
+#Train the laplace smoothed = 5 NaiveBayes model
+naiveBL5 <- naiveBayes(y~.,data=trainSet,laplace=5)
+#Show information about the model
+#naiveBL1
+#Set predictions
+naiveBL5TrainPredictions <- predict(naiveBL5,trainSet)
+naiveBL5TestPredictions <- predict(naiveBL5,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, naiveBL5TrainPredictions, metrics)
+mmetric(testSet$y, naiveBL5TestPredictions, metrics)
+
+#Train the laplace smoothed = 10 NaiveBayes model
+naiveBL10 <- naiveBayes(y~.,data=trainSet,laplace=10)
+#Show information about the model
+#naiveBTrue
+#Set predictions
+naiveBL10TrainPredictions <- predict(naiveBL10,trainSet)
+naiveBL10TestPredictions <- predict(naiveBL10,testSet)
+#Confusion matrices for evaluation metrics
+mmetric(trainSet$y, naiveBL10TrainPredictions, metrics)
+mmetric(testSet$y, naiveBL10TestPredictions, metrics)
+
+```
+
+# Task III - Model Building: Black Box Model
+```{r}
+#Set the base parameters for the neural networks. I set the number of neurons to 2 for each layer for the sake of consistency between layers and model training time. 
+l <- 0.3 
+m <- 0.2 
+n <-500 
+h1 <- "2" 
+h2 <- "2,2" 
+h3 <- "2,2,2" 
+MLP <- make_Weka_classifier("weka/classifiers/functions/MultilayerPerceptron") 
+
+#Build the 1-layer MLP model 
+MLP1 <- MLP(y~.,data=trainSet,control = Weka_control(L=l,M=m, N=n,H=h1))
+#Set predictions 
+MLP1TrainPredictions <- predict(MLP1, trainSet) 
+MLP1TestPredictions <- predict(MLP1, testSet)
+#Check performance  
+mmetric(trainSet$y,MLP1TrainPredictions,metrics) 
+mmetric(testSet$y,MLP1TestPredictions,metrics)
+
+#Build the 2-layer MLP model 
+MLP2 <- MLP(y~.,data=trainSet,control = Weka_control(L=l,M=m, N=n,H=h2))
+#Set predictions 
+MLP2TrainPredictions <- predict(MLP2, trainSet) 
+MLP2TestPredictions <- predict(MLP2, testSet)
+#Check performance  
+mmetric(trainSet$y,MLP2TrainPredictions,metrics) 
+mmetric(testSet$y,MLP2TestPredictions,metrics)
+
+#Build the 2-layer MLP model 
+MLP3 <- MLP(y~.,data=trainSet,control = Weka_control(L=l,M=m, N=n,H=h3))
+#Set predictions 
+MLP3TrainPredictions <- predict(MLP2, trainSet) 
+MLP3TestPredictions <- predict(MLP2, testSet)
+#Check performance  
+mmetric(trainSet$y,MLP3TrainPredictions,metrics) 
+mmetric(testSet$y,MLP3TestPredictions,metrics)
+
+```
+
+# Task III - Model Building: K-Nearest Neighbor
+```{r}
+#Set k=1. This is the default setting 
+knn1 <- IBk(y~.,data = trainSet,control = Weka_control(K=1)) 
+knn1
+#Set predictions 
+knn1TrainPredictions <- predict(knn1, trainSet) 
+knn1TestPredictions <- predict(knn1, testSet)
+#Check performance 
+mmetric(trainSet$y,knn1TrainPredictions,metrics) 
+mmetric(testSet$y,knn1TestPredictions,metrics)
+
+#Set k=5
+knn5 <- IBk(y~.,data = trainSet,control = Weka_control(K=5)) 
+knn5
+#Set predictions 
+knn5TrainPredictions <- predict(knn5, trainSet) 
+knn5TestPredictions <- predict(knn5, testSet)
+#Check performance 
+mmetric(trainSet$y,knn5TrainPredictions,metrics) 
+mmetric(testSet$y,knn5TestPredictions,metrics)
+
+#Set k=10
+knn10 <- IBk(y~.,data = trainSet,control = Weka_control(K=10)) 
+knn10
+#Set predictions 
+knn10TrainPredictions <- predict(knn10, trainSet) 
+knn10TestPredictions <- predict(knn10, testSet)
+#Check performance 
+mmetric(trainSet$y,knn10TrainPredictions,metrics) 
+mmetric(testSet$y,knn10TestPredictions,metrics)
+
+```
+# Task IV - Preparation: combine the results of the models in a dataframe to inspect
+```{r}
+
+ReturnMetrics <- function(targetVariable,predictors) {
+  metricsList <- mmetric(targetVariable, predictors, metrics)
+  # Convert list to vector to simplify DataFrame creation
+  return(unlist(metricsList))
+}
+
+
+#Classification Tree
+CTDEFTrain <- ReturnMetrics(trainSet$y, trainPredictionsDef)
+CTDEFTest <- ReturnMetrics(testSet$y, testPredictionsDef)
+CT05Train <- ReturnMetrics(trainSet$y, trainPredictions05)
+CT05Test <- ReturnMetrics(testSet$y, testPredictions05)
+CT65Train <- ReturnMetrics(trainSet$y, trainPredictions65)
+CT65Test <- ReturnMetrics(testSet$y, testPredictions65)
+
+#Naive Bayes
+NBDefTrain <- ReturnMetrics(trainSet$y, naiveBDefTrainPredictions)
+NBDefTest <- ReturnMetrics(testSet$y, naiveBDefTestPredictions)
+NBL5Train <- ReturnMetrics(trainSet$y, naiveBL5TrainPredictions)
+NBL5Test <- ReturnMetrics(testSet$y, naiveBL5TestPredictions)
+NBL10Train <- ReturnMetrics(trainSet$y, naiveBL10TrainPredictions)
+NBL10Test <- ReturnMetrics(testSet$y, naiveBL10TestPredictions)
+
+#MLP
+MLP1Train <- ReturnMetrics(trainSet$y,MLP1TrainPredictions) 
+MLP1Test <- ReturnMetrics(testSet$y,MLP1TestPredictions)
+MLP2Train <- ReturnMetrics(trainSet$y,MLP2TrainPredictions)
+MLP2Test <- ReturnMetrics(testSet$y,MLP2TestPredictions)
+MLP3Train <- ReturnMetrics(trainSet$y,MLP3TrainPredictions)
+MLP3Test <- ReturnMetrics(testSet$y,MLP3TestPredictions)
+
+#knn
+knn1Train <- ReturnMetrics(trainSet$y,knn1TrainPredictions)
+knn1Test <- ReturnMetrics(testSet$y,knn1TestPredictions)
+knn5Train <- ReturnMetrics(trainSet$y,knn5TrainPredictions)
+knn5Test <- ReturnMetrics(testSet$y,knn5TestPredictions)
+knn10Train <- ReturnMetrics(trainSet$y,knn10TrainPredictions)
+knn10Test <- ReturnMetrics(testSet$y,knn10TestPredictions)
+
+
+modelPerformanceNames <- c("CTDEFTrain","CTDEFTest","CT05Train","CT05Test","CT65Train","CT65Test","NBDefTrain","NBDefTest","NBL5Train","NBL5Test","NBL10Train","NBL10Test","MLP1Train","MLP1Test","MLP2Train","MLP2Test","MLP3Train","MLP3Test","knn1Train","knn1Test","knn5Train","knn5Test","knn10Train","knn10Test")
+length(modelPerformanceNames)
+
+modelPerformanceAccuracy = c(CTDEFTrain["res.ACC"], CTDEFTest["res.ACC"],CT05Train["res.ACC"],
+CT05Test["res.ACC"],CT65Train["res.ACC"],CT65Test["res.ACC"],
+                             NBDefTrain["res.ACC"],NBDefTest["res.ACC"],NBL5Train["res.ACC"],NBL5Test["res.ACC"],NBL10Train["res.ACC"], NBL10Test["res.ACC"],
+                             MLP1Train["res.ACC"], MLP1Test["res.ACC"],MLP2Train["res.ACC"], MLP2Test["res.ACC"],MLP3Train["res.ACC"], MLP3Test["res.ACC"],
+                             knn1Train["res.ACC"], knn1Test["res.ACC"],knn5Train["res.ACC"], knn5Test["res.ACC"],knn10Train["res.ACC"], knn10Test["res.ACC"])
+
+totalModelPerformance <- data.frame(modelPerformanceNames,modelPerformanceAccuracy)
+
+```
+
+
+# Task IV - Reflections
+```{r}
+
+#Q1: Model performance of each model built
+totalModelPerformance
+
+#Q2: Which model performed the best/worst. Ideally use a table to make this easy to read. 
+#Answer: Model with the highest accuracy on the testing set - Classification Tree Model, CF=0.05. I would also trust this model because the training and testing accuracy is nearly identical, meaning little to no overfitting occurred. 
+#Answer: Model with the lowest accuracy on the testing set - K-nearest neighbor, K=1
+
+#Q3: Which features appear to be the most useful to predict y? If you had to choose just one feature to predict the target which would it be?
+#We will use the most accurate model for the question to this answer.
+C5imp(tree05)
+#Answer: According to the ranking of importance, the capital.gain variable would be the best feature to keep in predicting the target variable. However, We should keep in mind what we discovered during the EDA, that 91.67% of the entries in the dataset had "0" as capital gain. This variable has an incredibly uneven distribution, and it may be risky to base a model on this variable alone (the split of high vs low income is not the same as those with capital gain vs those who do not). Therefore, I would actually pick relationship as the one feature to keep. relationship has a reasonable distribution, and would be more robust in smaller datasets where some of the entries may not have capital gains at all. 
+
+#Q4: How much better was your best model than a majority rule classifier? Than a random classifier?
+#Answer: Best model accuracy on testing set: 86.93%. Majority rule classifier: 75.92%. 86.93-75.92 = 11.01. The best performing model scored 11.01% higher than a majority rule classifier. 
+#Answer: Random classifier=(0.7592%)^2 + (0.2408)^2 = 0.5764 + 0.0580 = 0.6344 * 100 = 63.44%. 86.93-63.44 = 23.49. The best performing model scored 23.49% higher than a random classifier. 
+
+#Q5: Interpret what mistakes in predictions would mean to marketing financial products to individuals.
+#Answer: At best it would be ignored and the customers view towards the marketer would remaing neutral. At worst it would offend or annoy the customer and lower their opinion of the marketer. 
+
+#Q6: If someone with low income was categorized as having high income and a high income product was marketed to them what are the ramifications of this if they are unable to repay the loan?
+#Answer: The ramifications would be two fold. (1) reputationally, the company could earn a reputation for being predatory by giving loans that they know customers won't be able to pay. (2) if customers have to default on their loans, then the company will have to seize whatever assets will make the loan whole. Even if sufficient assets are seized, this process is still time consuming in both financial and human capital which ultimately turns into a loss. It is important for these two reasons that this model be as accurate as possible (on the training data of course). 
+
+#Q7: What if a high income individual has a less profitable financial product marketed to them because we accidentally predict them to have low income?
+#Answer: The answer to this will be more similar to the answer to Q5 than Q6. Since the higher income individual will most likely be able to pay off the loan if they do accept, then there is less reputational risk. Still though, trust from the customer in the marketer will be reduced since tone-deaf products are still being offered.
+
+#Q7: Was the model better at predicting those with low income or high income?
+mmetric(testSet$y, testPredictions05, metrics)
+#Answer: TPR1(low income): 93.51% and TPR2(high income): 66.15%. Clearly the model was better at predicting lower income customers than higher income. I would take a guess that this is because there were more low income entries in the dataset to train the model on. 
+
+```
