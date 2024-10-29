@@ -1,0 +1,40 @@
+---
+title: "Group 6 Capstone II Modeling File"
+author: "Cyrus Sobhani"
+date: "10/28/2024"
+output: 
+  html_document: 
+    number_sections: true
+    toc: true
+    theme: united
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Load the data
+```{r}
+library(dplyr)
+
+ApplicationTrain <- read.csv("/Users/cyrussobhani/Documents/Capstone II/home-credit-default-risk/application_train.csv")
+  
+ApplicationTest <- read.csv("/Users/cyrussobhani/Documents/Capstone II/home-credit-default-risk/application_test.csv")
+
+```
+
+# Nidal Pre-Processing 
+variable names for datasets should be "NA"
+
+# Andrew Pre-Processing
+variable names for datasets should be "AD"
+
+# Cyrus Pre-Processing
+variable names for datasets should be "CS"
+
+```{r}
+
+CSApplicationTrainFormatted <- data.frame(lapply(ApplicationTrain, function(x) if(is.character(x)) as.factor(x) else x))
+CSApplicationTestFormatted <- data.frame(lapply(ApplicationTest, function(x) if(is.character(x)) as.factor(x) else x))
+CSApplicationTrainFormatted$TARGET <- factor(ApplicationTrainFormatted$TARGET)
+
+```
+
